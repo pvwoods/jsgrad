@@ -2,9 +2,281 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title></title>
+    <title>JSGrad: JavaScript Autograd Framework</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        select, button {
+            padding: 8px 12px;
+            margin-right: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #output-console {
+            background-color: #000;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            border-radius: 5px;
+        }
+        .description {
+            margin-bottom: 20px;
+        }
+        .example-info {
+            display: none;
+            margin-bottom: 15px;
+        }
+        .visible {
+            display: block;
+        }
+    </style>
 </head>
 <body>
+    <h1>JSGrad: JavaScript Autograd Framework</h1>
+    
+    <div class="description">
+        <p>A simple implementation of an autograd framework for JavaScript with a Multi-Layer Perceptron and 2D Convolutional layer.</p>
+        <p>Based on the <a href="https://www.youtube.com/watch?v=VMj-3S1tku0" target="_blank">lesson from Andrej Karpathy</a>.</p>
+    </div>
+    
+    <div id="mlp-info" class="example-info">
+        <h3>MLP Example</h3>
+        <p>This example trains a Multi-Layer Perceptron on a simple binary classification task.</p>
+        <p>The network has 3 inputs, two hidden layers with 4 neurons each, and 1 output.</p>
+    </div>
+    
+    <div id="conv2d-info" class="example-info">
+        <h3>Conv2D Example</h3>
+        <p>This example demonstrates using 2D convolutional kernels on a 4x4 grid input.</p>
+        <p>The network has 2 convolutional filters of size 2x2 applied to the input grid.</p>
+    </div>
+    
+    <div class="controls">
+        <select id="example-select">
+            <option value="mlp">Multi-Layer Perceptron (MLP)</option>
+            <option value="conv2d">2D Convolution (Conv2D)</option>
+        </select>
+        <button id="start-button">Start Training</button>
+    </div>
+    
+    <div id="output-console"></div>
+    
     <script src="src/main.js"></script>
+    <script>
+        // DOM elements
+        const exampleSelect = document.getElementById('example-select');
+        const startButton = document.getElementById('start-button');
+        const outputConsole = document.getElementById('output-console');
+        const mlpInfo = document.getElementById('mlp-info');
+        const conv2dInfo = document.getElementById('conv2d-info');
+        
+        // Show the appropriate example info based on selection
+        function updateExampleInfo() {
+            const selected = exampleSelect.value;
+            
+            mlpInfo.classList.toggle('visible', selected === 'mlp');
+            conv2dInfo.classList.toggle('visible', selected === 'conv2d');
+        }
+        
+        // Initial setup
+        updateExampleInfo();
+        exampleSelect.addEventListener('change', updateExampleInfo);
+        
+        // Custom console.log to output to our visual console
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            // Call the original console.log
+            originalConsoleLog.apply(console, args);
+            
+            // Add to our visual console
+            const message = args.join(' ');
+            const logLine = document.createElement('div');
+            logLine.textContent = message;
+            outputConsole.appendChild(logLine);
+            
+            // Auto-scroll to bottom
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        };
+        
+        // Clear the console
+        function clearConsole() {
+            outputConsole.innerHTML = '';
+        }
+        
+        // Run the selected example
+        startButton.addEventListener('click', function() {
+            clearConsole();
+            const selected = exampleSelect.value;
+            
+            console.log(`Starting ${selected === 'mlp' ? 'MLP' : 'Conv2D'} training...`);
+            console.log('-------------------------------------');
+            
+            if (selected === 'mlp') {
+                runMLPExample();
+            } else {
+                runConv2DExample();
+            }
+        });
+        
+        // Run the MLP example
+        function runMLPExample() {
+            // Create dataset
+            let xs = [
+                [ new Value(2.0), new Value(3.0), new Value(-1.0)],
+                [ new Value(3.0), new Value(-1.0), new Value(0.5)],
+                [ new Value(0.5), new Value(1.0), new Value(1.0)],
+                [ new Value(1.0), new Value(1.0), new Value(-1.0)]
+            ];
+            let ys = [
+                new Value(1.0),
+                new Value(-1.0),
+                new Value(-1.0),
+                new Value(1.0)
+            ];
+            
+            // Create model
+            let model = new MLP(3, [4, 4, 1]);
+            let lr = 0.2;
+            let steps = 100;
+            
+            console.log("Training MLP model:");
+            
+            // Training loop with slight delay to see progress
+            let step = 0;
+            const intervalId = setInterval(() => {
+                if (step >= steps) {
+                    clearInterval(intervalId);
+                    console.log("Training complete!");
+                    return;
+                }
+                
+                model.zero_grad();
+                let loss = new Value(0.0);
+                
+                for (let ii in xs) {
+                    let pred = model.forward(xs[ii])[0];
+                    let diff = ys[ii].sub(pred).pow(2);
+                    loss = loss.add(diff);
+                }
+                loss = loss.div(ys.length);
+                
+                if (step % 10 === 0) {
+                    console.log(`step ${step}: ${loss.data.toFixed(6)}`);
+                }
+                
+                loss.backward();
+                
+                let params = model.params();
+                for (let pi in params) {
+                    let param = params[pi];
+                    param.data += param.grad * -lr;
+                }
+                
+                step++;
+            }, 100); // 100ms delay between steps
+        }
+        
+        // Run the Conv2D example
+        function runConv2DExample() {
+            // Create a 4x4 grid input
+            const gridInput = [
+                [new Value(1.0), new Value(0.0), new Value(0.0), new Value(1.0)],
+                [new Value(0.0), new Value(1.0), new Value(1.0), new Value(0.0)],
+                [new Value(0.0), new Value(1.0), new Value(1.0), new Value(0.0)],
+                [new Value(1.0), new Value(0.0), new Value(0.0), new Value(1.0)]
+            ];
+            
+            // Create a Conv2D layer with 2 filters of size 2x2
+            const conv = new Conv2D(4, 4, 2, 2);
+            
+            // Forward pass
+            const convOutput = conv.forward(gridInput);
+            
+            // Print the output shape
+            console.log(`Conv2D output shape: ${convOutput.length} channels, ${convOutput[0].length} values per channel`);
+            
+            // Print the first few values from the output
+            console.log("First channel output:");
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    console.log(`[${i},${j}]: ${convOutput[0][i*3+j].data.toFixed(4)}`);
+                }
+            }
+            
+            // Create a simple training example
+            const targetOutput = [];
+            for (let i = 0; i < 9; i++) {
+                targetOutput.push(new Value(0.5));
+            }
+            
+            // Simple training loop for the Conv2D
+            console.log("\nTraining Conv2D for 5 steps:");
+            
+            let step = 0;
+            const steps = 5;
+            const intervalId = setInterval(() => {
+                if (step >= steps) {
+                    clearInterval(intervalId);
+                    console.log("Training complete!");
+                    return;
+                }
+                
+                // Zero gradients
+                const params = conv.params();
+                for (let pi in params) {
+                    params[pi].grad = 0;
+                }
+                
+                // Forward pass
+                const output = conv.forward(gridInput)[0]; // Use only the first channel
+                
+                // Compute loss (MSE)
+                let loss = new Value(0.0);
+                for (let i = 0; i < output.length; i++) {
+                    const diff = output[i].sub(targetOutput[i]).pow(2);
+                    loss = loss.add(diff);
+                }
+                loss = loss.div(output.length);
+                
+                console.log(`step ${step}: ${loss.data.toFixed(6)}`);
+                
+                // Backward pass
+                loss.backward();
+                
+                // Update parameters
+                for (let pi in params) {
+                    params[pi].data += params[pi].grad * -0.1; // Smaller learning rate
+                }
+                
+                step++;
+            }, 500); // 500ms delay between steps
+        }
+    </script>
 </body>
 </html>
