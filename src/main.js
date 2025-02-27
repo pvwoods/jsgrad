@@ -168,6 +168,86 @@ class Neuron {
 
 }
 
+class Conv2D {
+    constructor(inputHeight, inputWidth, kernelSize, numFilters, label='conv') {
+        this.inputHeight = inputHeight;
+        this.inputWidth = inputWidth;
+        this.kernelSize = kernelSize;
+        this.numFilters = numFilters;
+        
+        // Output dimensions
+        this.outputHeight = inputHeight - kernelSize + 1;
+        this.outputWidth = inputWidth - kernelSize + 1;
+        
+        // Initialize filters (kernels)
+        this.filters = [];
+        for (let f = 0; f < numFilters; f++) {
+            const filter = [];
+            for (let i = 0; i < kernelSize; i++) {
+                for (let j = 0; j < kernelSize; j++) {
+                    filter.push(new Value(randn_bm() * 0.1, null, '', `${label}:filter_${f}_${i}_${j}`));
+                }
+            }
+            this.filters.push(filter);
+        }
+        
+        // Initialize biases
+        this.biases = [];
+        for (let f = 0; f < numFilters; f++) {
+            this.biases.push(new Value(randn_bm() * 0.1, null, '', `${label}:bias_${f}`));
+        }
+    }
+    
+    forward(xs) {
+        // xs should be a 2D array of Value objects with shape [inputHeight][inputWidth]
+        const results = [];
+        
+        // For each filter
+        for (let f = 0; f < this.numFilters; f++) {
+            // For each position in the output
+            const outputChannel = [];
+            for (let i = 0; i <= this.inputHeight - this.kernelSize; i++) {
+                for (let j = 0; j <= this.inputWidth - this.kernelSize; j++) {
+                    // Apply convolution at this position
+                    let filterIdx = 0;
+                    
+                    // Multiply and sum kernel values with input values
+                    // Track all multiplications separately to ensure proper gradient flow
+                    const weightedInputs = [];
+                    for (let ki = 0; ki < this.kernelSize; ki++) {
+                        for (let kj = 0; kj < this.kernelSize; kj++) {
+                            const inputVal = xs[i + ki][j + kj];
+                            // Explicitly create the multiplication operation
+                            const weightedInput = inputVal.mul(this.filters[f][filterIdx]);
+                            weightedInputs.push(weightedInput);
+                            filterIdx++;
+                        }
+                    }
+                    
+                    // Sum all weighted inputs
+                    const sum = weightedInputs.reduce((acc, val) => acc.add(val), new Value(0.0));
+                    
+                    // Add bias and apply activation
+                    const withBias = sum.add(this.biases[f]);
+                    const activated = withBias.tanh();
+                    outputChannel.push(activated);
+                }
+            }
+            results.push(outputChannel);
+        }
+        
+        return results;
+    }
+    
+    params() {
+        let result = [...this.biases];
+        for (let f = 0; f < this.numFilters; f++) {
+            result = result.concat(this.filters[f]);
+        }
+        return result;
+    }
+}
+
 class Layer {
     constructor(sin, sout) {
         this.neurons = []
@@ -225,42 +305,123 @@ class MLP {
 }
 
 
-let xs = [
-    [ new Value(2.0), new Value(3.0), new Value(-1.0)],
-    [ new Value(3.0), new Value(-1.0), new Value(0.5)],
-    [ new Value(0.5), new Value(1.0), new Value(1.0)],
-    [ new Value(1.0), new Value(1.0), new Value(-1.0)]
-]
-let ys = [
-    new Value(1.0),
-    new Value(-1.0),
-    new Value(-1.0),
-    new Value(1.0)
-]
+// Run examples if in browser context (not being required by tests)
+if (typeof window !== 'undefined') {
+    // Example 1: MLP on a simple dataset
+    let xs = [
+        [ new Value(2.0), new Value(3.0), new Value(-1.0)],
+        [ new Value(3.0), new Value(-1.0), new Value(0.5)],
+        [ new Value(0.5), new Value(1.0), new Value(1.0)],
+        [ new Value(1.0), new Value(1.0), new Value(-1.0)]
+    ]
+    let ys = [
+        new Value(1.0),
+        new Value(-1.0),
+        new Value(-1.0),
+        new Value(1.0)
+    ]
 
-let model = new MLP(3, [4,4,1]);
-let lr = 0.2;
-let steps = 100;
+    let model = new MLP(3, [4,4,1]);
+    let lr = 0.2;
+    let steps = 100;
 
-for(var step=0; step<steps;step++) {
-    
-    model.zero_grad();
-    loss = new Value(0.0);
+    console.log("Training MLP model:");
+    for(var step=0; step<steps;step++) {
+        
+        model.zero_grad();
+        let loss = new Value(0.0);
 
-    for(ii in xs) {
-        pred = model.forward(xs[ii])[0];
-        diff = ys[ii].sub(pred).pow(2);
-        loss = loss.add(diff);
+        for(let ii in xs) {
+            let pred = model.forward(xs[ii])[0];
+            let diff = ys[ii].sub(pred).pow(2);
+            loss = loss.add(diff);
+        }
+        loss = loss.div(ys.length);
+        if(step % 10 == 0) {
+            console.log(`step ${step}: ${loss.data}`);
+        }
+        loss.backward();
+
+        var params = model.params();
+        for(var pi in params) {
+            let param = params[pi]
+            param.data += param.grad * -lr;
+        }
     }
-    loss = loss.div(ys.length);
-    if(step % 10 == 0) {
-        console.log(`step ${step}: ${loss.data}`);
-    }
-    loss.backward();
 
-    var params = model.params();
-    for(var pi in params) {
-        param = params[pi]
-        param.data += param.grad * -lr;
+    // Example 2: Using the 2D convolutional kernel
+    console.log("\nTesting Conv2D on a 4x4 input:");
+
+    // Create a 4x4 grid input
+    const gridInput = [
+        [new Value(1.0), new Value(0.0), new Value(0.0), new Value(1.0)],
+        [new Value(0.0), new Value(1.0), new Value(1.0), new Value(0.0)],
+        [new Value(0.0), new Value(1.0), new Value(1.0), new Value(0.0)],
+        [new Value(1.0), new Value(0.0), new Value(0.0), new Value(1.0)]
+    ];
+
+    // Create a Conv2D layer with 2 filters of size 2x2
+    const conv = new Conv2D(4, 4, 2, 2);
+
+    // Forward pass
+    const convOutput = conv.forward(gridInput);
+
+    // Print the output shape
+    console.log(`Conv2D output shape: ${convOutput.length} channels, ${convOutput[0].length} values per channel`);
+
+    // Print the first few values from the output
+    console.log("First channel output:");
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            console.log(`[${i},${j}]: ${convOutput[0][i*3+j].data.toFixed(4)}`);
+        }
     }
+
+    // Create a simple training example
+    const targetOutput = [];
+    for (let i = 0; i < 9; i++) {
+        targetOutput.push(new Value(0.5));
+    }
+
+    // Simple training loop for the Conv2D
+    console.log("\nTraining Conv2D for 5 steps:");
+    for (let step = 0; step < 5; step++) {
+        // Zero gradients
+        const params = conv.params();
+        for (let pi in params) {
+            params[pi].grad = 0;
+        }
+        
+        // Forward pass
+        const output = conv.forward(gridInput)[0]; // Use only the first channel
+        
+        // Compute loss (MSE)
+        let loss = new Value(0.0);
+        for (let i = 0; i < output.length; i++) {
+            const diff = output[i].sub(targetOutput[i]).pow(2);
+            loss = loss.add(diff);
+        }
+        loss = loss.div(output.length);
+        
+        console.log(`step ${step}: ${loss.data.toFixed(6)}`);
+        
+        // Backward pass
+        loss.backward();
+        
+        // Update parameters
+        for (let pi in params) {
+            params[pi].data += params[pi].grad * -0.1; // Smaller learning rate
+        }
+    }
+}
+
+// Export classes for testing in Node.js environment
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        Value,
+        Neuron,
+        Layer,
+        MLP,
+        Conv2D
+    };
 }

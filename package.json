@@ -1,0 +1,21 @@
+{
+  "name": "jsgrad",
+  "version": "1.0.0",
+  "description": "A simple autograd implementation in JavaScript with MLP and Conv2D",
+  "main": "src/main.js",
+  "scripts": {
+    "test": "node tests.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/jsgrad.git"
+  },
+  "keywords": [
+    "autograd",
+    "neural-networks",
+    "deep-learning",
+    "convolution"
+  ],
+  "author": "",
+  "license": "MIT"
+}
