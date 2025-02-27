@@ -212,20 +212,29 @@ class Conv2D {
                     let filterIdx = 0;
                     
                     // Multiply and sum kernel values with input values
-                    // Track all multiplications separately to ensure proper gradient flow
-                    const weightedInputs = [];
+                    // CRITICAL FIX: Build the computational graph properly for gradient flow
+                    let sum = null;
                     for (let ki = 0; ki < this.kernelSize; ki++) {
                         for (let kj = 0; kj < this.kernelSize; kj++) {
                             const inputVal = xs[i + ki][j + kj];
-                            // Explicitly create the multiplication operation
+                            // Create the weighted input (multiplication)
                             const weightedInput = inputVal.mul(this.filters[f][filterIdx]);
-                            weightedInputs.push(weightedInput);
+                            
+                            // Add to the running sum, ensuring proper graph connections
+                            if (sum === null) {
+                                sum = weightedInput;
+                            } else {
+                                sum = sum.add(weightedInput);
+                            }
+                            
                             filterIdx++;
                         }
                     }
                     
-                    // Sum all weighted inputs
-                    const sum = weightedInputs.reduce((acc, val) => acc.add(val), new Value(0.0));
+                    // Ensure we have a valid sum
+                    if (sum === null) {
+                        sum = new Value(0.0);
+                    }
                     
                     // Add bias and apply activation
                     const withBias = sum.add(this.biases[f]);
