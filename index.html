@@ -41,9 +41,10 @@
             color: #00ff00;
             font-family: monospace;
             padding: 15px;
-            height: 400px;
+            height: 300px;
             overflow-y: auto;
             border-radius: 5px;
+            margin-bottom: 20px;
         }
         .description {
             margin-bottom: 20px;
@@ -53,7 +54,85 @@
             margin-bottom: 15px;
         }
         .visible {
-            display: block;
+            display: block !important;
+        }
+        
+        /* Visualization styles */
+        .visualization {
+            display: none;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        .visualization-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .grid-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        .grid {
+            display: inline-grid;
+            grid-template-columns: repeat(4, 50px);
+            grid-template-rows: repeat(4, 50px);
+            gap: 2px;
+        }
+        .output-grid {
+            display: inline-grid;
+            grid-template-columns: repeat(3, 50px);
+            grid-template-rows: repeat(3, 50px);
+            gap: 2px;
+        }
+        .cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            font-family: monospace;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .active-cell {
+            box-shadow: 0 0 5px #2196F3;
+        }
+        .conv-window {
+            border: 2px solid #2196F3;
+            box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+        }
+        .arrow {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+        }
+        .filter-grid {
+            display: inline-grid;
+            grid-template-columns: repeat(2, 40px);
+            grid-template-rows: repeat(2, 40px);
+            gap: 2px;
+        }
+        .filter-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            font-family: monospace;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        .filter-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .filter-title {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .channel-select {
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -87,6 +166,78 @@
     
     <div id="output-console"></div>
     
+    <!-- Convolution Visualization -->
+    <div id="conv-visualization" class="visualization">
+        <div class="visualization-title">Convolution Visualization</div>
+        
+        <div class="channel-select">
+            <label for="channel-selector">View Output Channel: </label>
+            <select id="channel-selector">
+                <option value="0">Channel 1</option>
+                <option value="1">Channel 2</option>
+            </select>
+        </div>
+        
+        <div class="grid-container">
+            <!-- Input Grid -->
+            <div>
+                <div class="visualization-title">Input 4x4 Grid</div>
+                <div id="input-grid" class="grid">
+                    <!-- Will be filled dynamically -->
+                </div>
+            </div>
+            
+            <!-- Filters -->
+            <div class="filter-container">
+                <div class="visualization-title">Filters</div>
+                <div id="filter-grids">
+                    <div>
+                        <div class="filter-title">Filter 1</div>
+                        <div id="filter1" class="filter-grid">
+                            <!-- Will be filled dynamically -->
+                        </div>
+                    </div>
+                    <div>
+                        <div class="filter-title">Filter 2</div>
+                        <div id="filter2" class="filter-grid">
+                            <!-- Will be filled dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Arrow -->
+            <div class="arrow">➡️</div>
+            
+            <!-- Output Comparison Section -->
+            <div>
+                <div class="visualization-title">Output vs Target</div>
+                
+                <!-- Output Grid -->
+                <div>
+                    <div class="visualization-title" style="font-size: 14px;">Current Output</div>
+                    <div id="output-grid" class="output-grid">
+                        <!-- Will be filled dynamically -->
+                    </div>
+                </div>
+                
+                <!-- Target Output Grid -->
+                <div style="margin-top: 15px;">
+                    <div class="visualization-title" style="font-size: 14px;">Target Output (0.5)</div>
+                    <div id="target-grid" class="output-grid">
+                        <!-- Will be filled dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div>
+            <p>Hover over output cells to see which input cells and filter weights contribute to that value.</p>
+            <p>The 2x2 kernel slides across the 4x4 input, producing a 3x3 output for each filter.</p>
+            <p>The target output shows what the network is learning to produce (all values of 0.5). Watch as the actual output approaches the target during training.</p>
+        </div>
+    </div>
+    
     <script src="src/main.js"></script>
     <script>
         // DOM elements
@@ -95,6 +246,8 @@
         const outputConsole = document.getElementById('output-console');
         const mlpInfo = document.getElementById('mlp-info');
         const conv2dInfo = document.getElementById('conv2d-info');
+        const convVisualization = document.getElementById('conv-visualization');
+        const channelSelector = document.getElementById('channel-selector');
         
         // Show the appropriate example info based on selection
         function updateExampleInfo() {
@@ -102,6 +255,7 @@
             
             mlpInfo.classList.toggle('visible', selected === 'mlp');
             conv2dInfo.classList.toggle('visible', selected === 'conv2d');
+            convVisualization.classList.toggle('visible', selected === 'conv2d');
         }
         
         // Initial setup
@@ -202,10 +356,193 @@
             }, 100); // 100ms delay between steps
         }
         
+        // Create visualization grids
+        // Helper function to get a blue color based on value (0 -> pale blue, 1 -> dark blue)
+        function getBlueShade(value) {
+            // Normalize value to be between 0 and 1
+            const normalizedValue = Math.max(0, Math.min(1, value));
+            
+            // Calculate RGB components
+            // For pale blue to dark blue transition: (220,235,255) -> (0,50,150)
+            const r = Math.round(220 - normalizedValue * 220);
+            const g = Math.round(235 - normalizedValue * 185);
+            const b = Math.round(255 - normalizedValue * 105);
+            
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+        
+        function createVisualizationGrids(inputValues, conv, outputValues, targetOutputValues) {
+            // Create input grid
+            const inputGrid = document.getElementById('input-grid');
+            inputGrid.innerHTML = '';
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    
+                    // Get normalized value (0 to 1)
+                    const value = inputValues[i][j].data;
+                    const normalizedValue = Math.abs(value);
+                    
+                    // Set background color based on value
+                    cell.style.backgroundColor = getBlueShade(normalizedValue);
+                    // Adjust text color for better contrast
+                    cell.style.color = normalizedValue > 0.5 ? 'white' : 'black';
+                    
+                    cell.textContent = value.toFixed(1);
+                    inputGrid.appendChild(cell);
+                }
+            }
+            
+            // Create filter grids
+            for (let f = 0; f < 2; f++) {
+                const filterGrid = document.getElementById(`filter${f+1}`);
+                filterGrid.innerHTML = '';
+                
+                for (let i = 0; i < 2; i++) {
+                    for (let j = 0; j < 2; j++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'filter-cell';
+                        
+                        const idx = i * 2 + j;
+                        const value = conv.filters[f][idx].data;
+                        
+                        // Use absolute value to determine color intensity (treat negative values as positive for coloring)
+                        const normalizedValue = Math.abs(value);
+                        
+                        // Set background color based on value
+                        cell.style.backgroundColor = getBlueShade(normalizedValue);
+                        // Adjust text color for better contrast
+                        cell.style.color = normalizedValue > 0.5 ? 'white' : 'black';
+                        
+                        cell.textContent = value.toFixed(2);
+                        filterGrid.appendChild(cell);
+                    }
+                }
+            }
+            
+            // Create output grid
+            const outputGrid = document.getElementById('output-grid');
+            outputGrid.innerHTML = '';
+            
+            // Get the selected channel
+            const channelIdx = parseInt(channelSelector.value);
+            
+            // Find min and max values for better scaling
+            let maxVal = 0;
+            outputValues[channelIdx].forEach(val => {
+                const absVal = Math.abs(val.data);
+                if (absVal > maxVal) maxVal = absVal;
+            });
+            
+            // Create the output cells
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    
+                    const idx = i * 3 + j;
+                    const value = outputValues[channelIdx][idx].data;
+                    
+                    // Normalize value relative to the maximum value in the output
+                    const normalizedValue = Math.abs(value) / (maxVal || 1);
+                    
+                    // Set background color based on value
+                    cell.style.backgroundColor = getBlueShade(normalizedValue);
+                    // Adjust text color for better contrast
+                    cell.style.color = normalizedValue > 0.5 ? 'white' : 'black';
+                    
+                    cell.textContent = value.toFixed(4);
+                    
+                    // Add hover effects
+                    cell.addEventListener('mouseenter', () => {
+                        // Highlight the corresponding input window
+                        for (let ki = 0; ki < 2; ki++) {
+                            for (let kj = 0; kj < 2; kj++) {
+                                const inputRow = i + ki;
+                                const inputCol = j + kj;
+                                const inputCell = inputGrid.children[inputRow * 4 + inputCol];
+                                inputCell.classList.add('conv-window');
+                            }
+                        }
+                        
+                        // Highlight the filter cells for the selected channel
+                        const filterGrid = document.getElementById(`filter${channelIdx+1}`);
+                        const filterCells = filterGrid.querySelectorAll('.filter-cell');
+                        filterCells.forEach(cell => {
+                            cell.style.transform = 'scale(1.1)';
+                            cell.style.boxShadow = '0 0 5px rgba(0, 0, 0, 0.3)';
+                        });
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        // Remove highlighting from input cells
+                        const cells = inputGrid.querySelectorAll('.conv-window');
+                        cells.forEach(cell => cell.classList.remove('conv-window'));
+                        
+                        // Remove highlighting from filter cells
+                        const filterGrid = document.getElementById(`filter${channelIdx+1}`);
+                        const filterCells = filterGrid.querySelectorAll('.filter-cell');
+                        filterCells.forEach(cell => {
+                            cell.style.transform = '';
+                            cell.style.boxShadow = '';
+                        });
+                    });
+                    
+                    outputGrid.appendChild(cell);
+                }
+            }
+            
+            // Create target grid (if targetOutputValues provided)
+            if (targetOutputValues) {
+                const targetGrid = document.getElementById('target-grid');
+                targetGrid.innerHTML = '';
+                
+                // Create the target cells
+                for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        const idx = i * 3 + j;
+                        
+                        // Get the target value
+                        const value = targetOutputValues[idx].data;
+                        const normalizedValue = Math.abs(value);
+                        
+                        // Set background color
+                        cell.style.backgroundColor = getBlueShade(normalizedValue);
+                        cell.style.color = normalizedValue > 0.5 ? 'white' : 'black';
+                        
+                        cell.textContent = value.toFixed(4);
+                        targetGrid.appendChild(cell);
+                    }
+                }
+            }
+        }
+        
+        // Handle channel selection change
+        channelSelector.addEventListener('change', () => {
+            // Re-render the visualization with the selected channel
+            if (convOutput && conv && targetValues) {
+                createVisualizationGrids(gridInput, conv, convOutput, targetValues);
+            }
+        });
+        
+        // Variables to store references for the visualization
+        let gridInput, conv, convOutput, targetValues;
+        
         // Run the Conv2D example
         function runConv2DExample() {
+            // Make sure visualization is visible
+            convVisualization.classList.add('visible');
+            console.log("Visualization container display style:", getComputedStyle(convVisualization).display);
+            
             // Create a 4x4 grid input
-            const gridInput = [
+            gridInput = [
                 [new Value(1.0), new Value(0.0), new Value(0.0), new Value(1.0)],
                 [new Value(0.0), new Value(1.0), new Value(1.0), new Value(0.0)],
                 [new Value(0.0), new Value(1.0), new Value(1.0), new Value(0.0)],
@@ -213,10 +550,21 @@
             ];
             
             // Create a Conv2D layer with 2 filters of size 2x2
-            const conv = new Conv2D(4, 4, 2, 2);
+            conv = new Conv2D(4, 4, 2, 2);
             
             // Forward pass
-            const convOutput = conv.forward(gridInput);
+            convOutput = conv.forward(gridInput);
+            
+            // Create a simple training example - target values
+            targetValues = [];
+            for (let i = 0; i < 9; i++) {
+                targetValues.push(new Value(0.5));
+            }
+            
+            // Create the visualization
+            console.log("Creating visualization...");
+            createVisualizationGrids(gridInput, conv, convOutput, targetValues);
+            console.log("Visualization created");
             
             // Print the output shape
             console.log(`Conv2D output shape: ${convOutput.length} channels, ${convOutput[0].length} values per channel`);
@@ -229,21 +577,19 @@
                 }
             }
             
-            // Create a simple training example
-            const targetOutput = [];
-            for (let i = 0; i < 9; i++) {
-                targetOutput.push(new Value(0.5));
-            }
-            
             // Simple training loop for the Conv2D
-            console.log("\nTraining Conv2D for 5 steps:");
+            console.log("\nTraining Conv2D for 50 steps:");
             
             let step = 0;
-            const steps = 5;
+            const steps = 50;
             const intervalId = setInterval(() => {
                 if (step >= steps) {
                     clearInterval(intervalId);
                     console.log("Training complete!");
+                    
+                    // Update the visualization one last time
+                    convOutput = conv.forward(gridInput);
+                    createVisualizationGrids(gridInput, conv, convOutput, targetValues);
                     return;
                 }
                 
@@ -259,12 +605,20 @@
                 // Compute loss (MSE)
                 let loss = new Value(0.0);
                 for (let i = 0; i < output.length; i++) {
-                    const diff = output[i].sub(targetOutput[i]).pow(2);
+                    const diff = output[i].sub(targetValues[i]).pow(2);
                     loss = loss.add(diff);
                 }
                 loss = loss.div(output.length);
                 
-                console.log(`step ${step}: ${loss.data.toFixed(6)}`);
+                if (step % 5 === 0) {
+                    console.log(`step ${step}: ${loss.data.toFixed(6)}`);
+                    
+                    // Update the visualization
+                    console.log("Updating visualization for step " + step);
+                    convOutput = conv.forward(gridInput);
+                    createVisualizationGrids(gridInput, conv, convOutput, targetValues);
+                    console.log("Visualization updated");
+                }
                 
                 // Backward pass
                 loss.backward();
